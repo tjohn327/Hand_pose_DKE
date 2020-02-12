@@ -75,3 +75,4 @@ x_test, y_test = load_data(3,5)
 
 x_train, y_train = data_processing(x_train,y_train)
 x_test, y_test = data_processing(x_test,y_test)
+print(x_train.shape, x_test.shape,y_train.shape,y_test.shape)
