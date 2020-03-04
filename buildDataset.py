@@ -1,7 +1,9 @@
 import cv2
 import os
 import numpy as np
+import keras
 from sklearn.utils import shuffle
+from PIL import Image
 from keras.preprocessing.image import img_to_array, array_to_img
 
 
@@ -26,12 +28,12 @@ def read_poses(poses):
     print("Classes = " + str(count_classes))
     print("Images = " + str(count_image))
     x = np.empty(shape=(count_image, 28, 28, 1))
-    y = np.empty(shape=(count_image,count_classes))
+    y = np.empty(count_image)
 
     count_image = 0
     count_classes = 0
-
     for pose in poses_directory:
+        print("hello")
         if pose in poses:
             print(" Current Pose: " + pose)
             subdirs = os.listdir("F:/Hand_pose/Poses/" + pose + '/')
@@ -44,10 +46,10 @@ def read_poses(poses):
                         # Reading the image and normalizing
                         image = cv2.imread(path)
                         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                        image = image.astype(dtype="float64")
+                        image = image.astype(dtype="float32")
                         image = np.reshape(image, (28, 28, 1))
                         x[count_image][:][:][:] = image
-                        y[count_image][:] = count_classes
+                        y[count_image] = count_classes
                         count_image += 1
             count_classes += 1
     x = x / 255
@@ -58,22 +60,9 @@ def read_poses(poses):
 def load_poses(poses=['all']):
     x, y = read_poses(poses)
     x, y = shuffle(x, y, random_state=0)
+
     x_train, y_train, x_test, y_test = split_poses(x, y)
-    x_train = np.dstack([x_train] * 3)
-    x_test = np.dstack([x_test] * 3)
 
-    x_train = x_train.reshape(-1, 28, 28, 3)
-    x_test = x_test.reshape(-1, 28, 28, 3)
-
-    x_train = np.asarray([img_to_array(array_to_img(im, scale=False).resize((224, 224))) for im in x_train])
-    x_test = np.asarray([img_to_array(array_to_img(im, scale=False).resize((224, 224))) for im in x_test])
-    #print(x_train.shape, x_test.shape)
-
-    x_train = x_train.astype('float32')
-    x_train /= 255
-
-    x_test = x_test.astype('float32')
-    x_test /= 255
     return x_train, y_train, x_test, y_test
 
 
@@ -89,8 +78,6 @@ def split_poses(x, y, split=0.8):
 if __name__ == "__main__":
     x_train, y_train, x_test, y_test = load_poses()
 
-
-
-    print(x_train.shape, x_test.shape,y_train.shape,y_test.shape)
+    print(x_train, x_test,y_train,y_test)
 
 

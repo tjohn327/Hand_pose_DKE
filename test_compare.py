@@ -16,7 +16,7 @@ import os, sys
 
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import buildDataset as dataset
+import buildDataset_test as dataset
 
 
 def train():
@@ -26,20 +26,20 @@ def train():
     model_name_to_save = "F:/Hand_pose/handpose_weights" + str(epochs) + ".h5"
 
     # image dimensions
-    row, column = 28, 28
+    row, column = 224, 224
 
     # import dataset
     x_train, y_train, x_test, y_test = dataset.load_poses()
     num_classes = len(np.unique(y_test))
 
-    if K.image_data_format() == 'channels_first':
-        x_train = x_train.reshape(x_train.shape[0], 1, row, column)
-        x_test = x_test.reshape(x_test.shape[0], 1, row, column)
-        input_shape = (1, row, column)
-    else:
-        x_train = x_train.reshape(x_train.shape[0], row, column, 1)
-        x_test = x_test.reshape(x_test.shape[0], row, column, 1)
-        input_shape = (row, column, 1)
+    # if K.image_data_format() == 'channels_first':
+    #     x_train = x_train.reshape(x_train.shape[0], 3, row, column)
+    #     x_test = x_test.reshape(x_test.shape[0], 3, row, column)
+    #     input_shape = (3, row, column)
+    # else:
+    #     x_train = x_train.reshape(x_train.shape[0], row, column, 3)
+    #     x_test = x_test.reshape(x_test.shape[0], row, column, 3)
+    #     input_shape = (row, column, 3)
 
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
@@ -52,7 +52,7 @@ def train():
 
     # add layers
     model_vgg16 = VGG16(weights='imagenet', include_top=False)
-    img_input = Input(shape=(28, 28, 3), name='image_input')
+    img_input = Input(shape=(224, 224, 3), name='image_input')
 
     for layer in model_vgg16.layers[:14]:
         layer.trainable = False
@@ -65,7 +65,7 @@ def train():
     my_model = Model(inputs=img_input, outputs=x)
     my_model.summary()
 
-    model_1 = VGG16(weights='imagenet', include_top=False, input_shape=(28, 28, 3))
+    model_1 = VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     optimizer_1 = optimizers.Adam()
 
     base_model = model_1
@@ -74,7 +74,7 @@ def train():
     x = Flatten()(x)
     x = Dropout(rate=0.5)(x)
 
-    predictions = Dense(10, activation='softmax')(x)
+    predictions = Dense(5, activation='softmax')(x)
     model = Model(inputs=base_model.input, outputs=predictions)
 
     for layer in base_model.layers[:14]:
@@ -86,7 +86,7 @@ def train():
 
 
     ##TRAIN##
-    hist = model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=2,
+    hist = model.fit(x_train, y_train, batch_size=32, epochs=epochs, verbose=2,
                      validation_data=(x_test, y_test))
 
     # Evaluation results
