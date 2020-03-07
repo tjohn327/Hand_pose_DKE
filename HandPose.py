@@ -12,6 +12,7 @@ import argparse
 import numpy as np
 import os
 import keyboard
+from collections import deque
 
 os.environ['KERAS_BACKEND'] = 'tensorflow'
 import keras
@@ -24,34 +25,32 @@ frame_mid = 3
 frame_end = 5
 
 
-#def motion_detect(frame_count, predicted_label, centroid_list):
-
-
-
 # Create a worker thread that loads graph and
 # does detection on images in an input queue and puts it on an output queue
-
-def worker(input_q, output_q, cap_params, frame_processed, poses):
-    centroid_list = []
+#
+def worker(input_q, output_q, cap_params, frame_count, poses):
+    centroid = None
     predicted_label = ""
     print(">> loading frozen model for worker")
     detection_graph, sess = detector_utils.load_inference_graph()
     sess = tf.Session(graph=detection_graph)
     print(">> loading keras model for worker")
     try:
-        model, classification_graph, session = classifier.load_KerasGraph("F:/Github/Hand_pose_DKE/cnn/models/hand_poses_wGarbage_10.h5")
+        model, classification_graph, session = classifier.load_KerasGraph(
+            "F:/Github/Hand_pose_DKE/cnn/models/hand_poses_wGarbage_10.h5")
     except Exception as e:
         print(e)
-    frame_count = 0
+    centroid_list = deque(maxlen=5)
+    direction = ""
+    (dX, dY) = (0, 0)
     while True:
-        # print("> ===== in worker loop, frame ", frame_processed)
+        # print("> ===== in worker loop, frame ", frame_count)
         frame = input_q.get()
         if (frame is not None):
             # Actual detection. Variable boxes contains the bounding box cordinates for hands detected,
             # while scores contains the confidence for each of these boxes.
             # Hint: If len(boxes) > 1 , you may assume you have found atleast one hand (within your score threshold)
-            boxes, scores = detector_utils.detect_objects(
-                frame, detection_graph, sess)
+            boxes, scores = detector_utils.detect_objects(frame, detection_graph, sess)
 
             # print(boxes[0])
 
@@ -64,67 +63,68 @@ def worker(input_q, output_q, cap_params, frame_processed, poses):
                                              scores, boxes, cap_params['im_width'], cap_params['im_height'], frame)
 
             # classify hand pose
-            if res is not None:
+            if res is not None and frame_count == 0:
                 class_res = classifier.classify(model, classification_graph, session, res)
-                #print(class_res)
-                # inferences_q.put(class_res)
                 class_pred = class_res.argmax(axis=-1)
-                #print(class_pred)
                 predicted_label = poses[int(class_pred)]
-                print(predicted_label)
+                #print(predicted_label)
 
-            #if predicted_label == "Start":
-            centroid = detector_utils.get_centroid(cap_params['num_hands_detect'], cap_params["score_thresh"],
+            if predicted_label == "Start" and frame_count <= frame_end:
+                centroid = detector_utils.get_centroid(cap_params['num_hands_detect'], cap_params["score_thresh"],
                                                    scores, boxes, cap_params['im_width'], cap_params['im_height'],
                                                    frame)
-            frame_count += 1
-            #print(centroid)
-
-
-            if frame_count > frame_end:
-                frame_count = 0
-                centroid_list = []
 
             if centroid is not None:
-                if frame_count == frame_start:
-                    centroid_list.append(centroid)
-                    # print(frame_count)
-                    # print(centroid_list)
-                elif frame_count == frame_mid:
-                    centroid_list.append(centroid)
-                elif frame_count == frame_end and len(centroid_list) > 0:
-                    centroid_list.pop()
-                    centroid_list.append(centroid)
-                # elif frame_count == 9:
-                #     centroid_list.append(centroid)
-            #print(centroid_list)
+                #if frame_count in range(frame_start,frame_end-1):
+                centroid_list.appendleft(centroid)
 
-            if predicted_label == "Start":
-                if frame_count == frame_end:
-                    if len(centroid_list) == 2:
-                        if centroid_list[0][0]+2 < centroid_list[1][0]:
-                            print("forward")
-                            keyboard.press_and_release('right')
-                        elif centroid_list[0][0] > centroid_list[1][0]+2:
-                            print("back")
-                            keyboard.press_and_release('left')
-                        elif centroid_list[0][1]+2 < centroid_list[1][1]:
-                            print("down")
-                        elif centroid_list[0][1] > centroid_list[1][1]+2:
-                            print("up")
-                        # else:
-                    #     print("*******TRY AGAIN - Gesture not recognized**********")
+                for i in np.arange(1, len(centroid_list)):
+                    if centroid_list[i-1] is None or centroid_list[i] is None:
+                        continue
+                    if frame_count >= frame_end and centroid_list[-5] != None and i == 1:
+                        dX = centroid_list[-5][0] - centroid_list[i][0]
+                        dY = centroid_list[-5][1] - centroid_list[i][1]
+                        (dirX,dirY) = ("","")
 
-            #motion_detect(frame_count, predicted_label, centroid_list)
-            # add frame annotated with bounding box to queue
-            # cropped_output_q.put(res)
-            output_q.put(frame)
-            frame_processed += 1
-            # print(frame_processed)
-        else:
-            output_q.put(frame)
+                        if np.abs(dX) > 20:
+                            dirX = "Right" if np.sign(dX) == 1 else "Left"
+
+                        if np.abs(dY) > 20:
+                            dirY = "DOWN" if np.sign(dY) == 1 else "UP"
+
+                        if dirX != "" and dirY != "":
+                            direction = "{}-{}".format(dirY, dirX)
+
+                        else:
+                            direction = dirX if dirX != "" else dirY
+
+                    thickness = int(np.sqrt(frame_end / float(i + 1)) * 2.5)
+                    cv2.line(frame, centroid_list[i - 1], centroid_list[i], (0, 0, 255), thickness)
+
+                cv2.putText(frame, direction, (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.65, (77, 255, 9), 1)
+                cv2.putText(frame, "dx: {}, dy: {}".format(dX, dY),
+                            (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.35, (0, 0, 255), 1)
+                if direction == "Left":
+                    keyboard.press_and_release('left')
+                elif direction == "Right":
+                    keyboard.press_and_release('right')
+
+                frame_count += 1
+                if frame_count > frame_end:
+                    frame_count = 0
+                    centroid_list.clear()
+                    direction = ""
+                    flag = 1
+
+
+        #print(frame_count)
+
+        output_q.put(frame)  # print(frame_processed)
+# else:
+#     output_q.put(frame)
     sess.close()
-
 
 if __name__ == '__main__':
 
@@ -174,41 +174,43 @@ if __name__ == '__main__':
     index = 0
 
     cv2.namedWindow('Handpose', cv2.WINDOW_NORMAL)
+    try:
+        while True:
+            frame = video_capture.read()
+            frame = cv2.flip(frame, 1)
+            index += 1
 
-    while True:
-        frame = video_capture.read()
-        frame = cv2.flip(frame, 1)
-        index += 1
+            input_q.put(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
-        input_q.put(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            output_frame = output_q.get()
 
-        output_frame = output_q.get()
+            inferences = None
 
-        inferences = None
+            elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
+            num_frames += 1
+            fps = num_frames / elapsed_time
 
-        elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
-        num_frames += 1
-        fps = num_frames / elapsed_time
-
-        if (output_frame is not None):
-            output_frame = cv2.cvtColor(output_frame, cv2.COLOR_RGB2BGR)
-            if (display > 0):
-                if (fps > 0):
-                    detector_utils.draw_fps_on_image("FPS : " + str(int(fps)),
-                                                     output_frame)
-                cv2.imshow('Handpose', output_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-            else:
-                if (num_frames == 400):
-                    num_frames = 0
-                    start_time = datetime.datetime.now()
+            if (output_frame is not None):
+                output_frame = cv2.cvtColor(output_frame, cv2.COLOR_RGB2BGR)
+                if (display > 0):
+                    # if (fps > 0):
+                    #     detector_utils.draw_fps_on_image("FPS : " + str(int(fps)),
+                    #                                      output_frame)
+                    cv2.imshow('Handpose', output_frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
                 else:
-                    print("frames processed: ", index, "elapsed time: ",
-                          elapsed_time, "fps: ", str(int(fps)))
-        else:
-            print("video end")
-            break
+                    if (num_frames == 400):
+                        num_frames = 0
+                        start_time = datetime.datetime.now()
+                    else:
+                        print("frames processed: ", index, "elapsed time: ",
+                              elapsed_time, "fps: ", str(int(fps)))
+            else:
+                print("video end")
+                break
+    except KeyboardInterrupt:
+        pass
     elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
     fps = num_frames / elapsed_time
     print("fps", fps)

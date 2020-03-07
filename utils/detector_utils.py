@@ -62,11 +62,11 @@ def get_centroid(num_hands_detect, score_thresh, scores, boxes, im_width, im_hei
         if (scores[i] > score_thresh):
             (left, right, top, bottom) = (boxes[i][1] * im_width, boxes[i][3] * im_width,
                                           boxes[i][0] * im_height, boxes[i][2] * im_height)
-            p1 = (int(left), int(top))
-            p2 = (int(right), int(bottom))
-            centroid = (int(left/2), int(top/2))
-            #print(centroid)
-            #return image_np[int(top):int(bottom), int(left):int(right)].copy()
+            p1 = int((left + right) / 2.0)
+            p2 = int((top+ bottom) / 2.0 )
+            centroid = (p1,p2)
+            if centroid is not None:
+                cv2.circle(image_np, centroid, 5, (0, 0, 255), 1)
             return centroid
 
 def get_box_image(num_hands_detect, score_thresh, scores, boxes, im_width, im_height, image_np):
@@ -77,7 +77,6 @@ def get_box_image(num_hands_detect, score_thresh, scores, boxes, im_width, im_he
             p1 = (int(left), int(top))
             p2 = (int(right), int(bottom))
             centroid = (int(left/2), int(top/2))
-            #print(centroid)
             return image_np[int(top):int(bottom), int(left):int(right)].copy()
             #return centroid
 
@@ -119,7 +118,7 @@ class WebcamVideoStream:
     def __init__(self, src, width, height):
         # initialize the video camera stream and read the first frame
         # from the stream
-        self.stream = cv2.VideoCapture(src,cv2.CAP_V4L)
+        self.stream = cv2.VideoCapture(src+ cv2.CAP_DSHOW)
         self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         (self.grabbed, self.frame) = self.stream.read()
