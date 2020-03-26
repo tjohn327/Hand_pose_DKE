@@ -23,6 +23,7 @@ score_thresh = 0.18
 frame_start = 0
 frame_mid = 3
 frame_end = 5
+buffer = 5
 
 
 # Create a worker thread that loads graph and
@@ -40,7 +41,7 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
             "F:/Github/Hand_pose_DKE/cnn/models/hand_poses_wGarbage_10.h5")
     except Exception as e:
         print(e)
-    centroid_list = deque(maxlen=5)
+    centroid_list = deque(maxlen=buffer)
     direction = ""
     (dX, dY) = (0, 0)
     while True:
@@ -50,7 +51,8 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
             # Actual detection. Variable boxes contains the bounding box cordinates for hands detected,
             # while scores contains the confidence for each of these boxes.
             # Hint: If len(boxes) > 1 , you may assume you have found atleast one hand (within your score threshold)
-            boxes, scores = detector_utils.detect_objects(frame, detection_graph, sess)
+            norm_image = cv2.normalize(frame, None, 0,255, norm_type=cv2.NORM_MINMAX)
+            boxes, scores = detector_utils.detect_objects(norm_image, detection_graph, sess)
 
             # print(boxes[0])
 
@@ -73,28 +75,31 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
                 centroid = detector_utils.get_centroid(cap_params['num_hands_detect'], cap_params["score_thresh"],
                                                    scores, boxes, cap_params['im_width'], cap_params['im_height'],
                                                    frame)
+            # elif scores is None:
+            #     centroid = None
 
             if centroid is not None:
-                #if frame_count in range(frame_start,frame_end-1):
                 centroid_list.appendleft(centroid)
 
+                #print(centroid_list)
+                sorted(centroid_list)
+
                 for i in np.arange(1, len(centroid_list)):
-                    if centroid_list[i-1] is None or centroid_list[i] is None:
-                        continue
-                    if frame_count >= frame_end and centroid_list[-5] != None and i == 1:
+                    # if centroid_list[i-1] is None or centroid_list[i] is None:
+                    #     continue
+                    if frame_count == frame_end and centroid_list[-5] != None and i == 1:
                         dX = centroid_list[-5][0] - centroid_list[i][0]
                         dY = centroid_list[-5][1] - centroid_list[i][1]
                         (dirX,dirY) = ("","")
 
-                        if np.abs(dX) > 20:
+                        if np.abs(dX) > 10:
                             dirX = "Right" if np.sign(dX) == 1 else "Left"
 
-                        if np.abs(dY) > 20:
+                        if np.abs(dY) > 10:
                             dirY = "DOWN" if np.sign(dY) == 1 else "UP"
 
                         if dirX != "" and dirY != "":
                             direction = "{}-{}".format(dirY, dirX)
-
                         else:
                             direction = dirX if dirX != "" else dirY
 
@@ -106,29 +111,28 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
                 cv2.putText(frame, "dx: {}, dy: {}".format(dX, dY),
                             (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.35, (0, 0, 255), 1)
-                if direction == "Left":
-                    keyboard.press_and_release('left')
-                elif direction == "Right":
-                    keyboard.press_and_release('right')
+                # if direction == "Left":
+                #     keyboard.press_and_release('left')
+                #     #time.sleep(2)
+                # elif direction == "Right":
+                #     keyboard.press_and_release('right')
+                #     time.sleep(2)
 
                 frame_count += 1
-                if frame_count > frame_end:
+                if frame_count >= frame_end:
                     frame_count = 0
-                    centroid_list.clear()
+                    #centroid_list.clear()
                     direction = ""
-                    flag = 1
+                    #flag = 1
 
-
-        #print(frame_count)
-
-        output_q.put(frame)  # print(frame_processed)
+        output_q.put(frame)
 # else:
 #     output_q.put(frame)
     sess.close()
 
 if __name__ == '__main__':
 
-    vid_src = 1
+    vid_src = 0
     num_hands = 1
     fps = 1
     width = 300
@@ -139,8 +143,6 @@ if __name__ == '__main__':
 
     input_q = Queue(maxsize=queue_size)
     output_q = Queue(maxsize=queue_size)
-    # cropped_output_q    = Queue(maxsize=args.queue_size)
-    # inferences_q        = Queue(maxsize=args.queue_size)
 
     video_capture = WebcamVideoStream(
         src=vid_src, width=width, height=height).start()
@@ -178,9 +180,11 @@ if __name__ == '__main__':
         while True:
             frame = video_capture.read()
             frame = cv2.flip(frame, 1)
+
             index += 1
 
             input_q.put(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+
 
             output_frame = output_q.get()
 
