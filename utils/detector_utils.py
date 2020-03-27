@@ -49,13 +49,25 @@ def load_inference_graph():
 # draw the detected bounding boxes on the images
 # You can modify this to also draw a label.
 def draw_box_on_image(num_hands_detect, score_thresh, scores, boxes, im_width, im_height, image_np):
+    selected_centre = None
+    max_area = 0
+    selected_hand = None
     for i in range(num_hands_detect):
         if (scores[i] > score_thresh):
             (left, right, top, bottom) = (boxes[i][1] * im_width, boxes[i][3] * im_width,
                                           boxes[i][0] * im_height, boxes[i][2] * im_height)
             p1 = (int(left), int(top))
             p2 = (int(right), int(bottom))
+            area = (int(right) - int(left)) * (int(bottom) - int(top))
+            if area > max_area and area > 1200 and area < 9000:
+                max_area = area
+                selected_hand = [int(left), int(top), int(right), int(bottom)]
             cv2.rectangle(image_np, p1, p2, (77, 255, 9), 3, 1)
+    
+    if selected_hand is not None:
+        centre = ((selected_hand[0]+selected_hand[2])/2) + ((selected_hand[1]+selected_hand[3])/2)
+        return centre
+    return None
 
 def get_centroid(num_hands_detect, score_thresh, scores, boxes, im_width, im_height, image_np):
     for i in range(num_hands_detect):

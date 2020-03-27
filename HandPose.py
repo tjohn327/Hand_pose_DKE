@@ -38,12 +38,16 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
     print(">> loading keras model for worker")
     try:
         model, classification_graph, session = classifier.load_KerasGraph(
-            "F:/Github/Hand_pose_DKE/cnn/models/hand_poses_wGarbage_10.h5")
+            "D:/Code/Priyanka/Hand_pose_DKE/cnn/models/hand_poses_wGarbage_10.h5")
     except Exception as e:
         print(e)
     centroid_list = deque(maxlen=buffer)
     direction = ""
     (dX, dY) = (0, 0)
+    detection_centres = []
+    index = 0
+    is_centres_filled = False
+    detected = False
     while True:
         # print("> ===== in worker loop, frame ", frame_count)
         frame = input_q.get()
@@ -51,8 +55,8 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
             # Actual detection. Variable boxes contains the bounding box cordinates for hands detected,
             # while scores contains the confidence for each of these boxes.
             # Hint: If len(boxes) > 1 , you may assume you have found atleast one hand (within your score threshold)
-            norm_image = cv2.normalize(frame, None, 0,255, norm_type=cv2.NORM_MINMAX)
-            boxes, scores = detector_utils.detect_objects(norm_image, detection_graph, sess)
+            #frame = cv2.normalize(frame, None, 0,255, norm_type=cv2.NORM_MINMAX)
+            boxes, scores = detector_utils.detect_objects(frame, detection_graph, sess)
 
             # print(boxes[0])
 
@@ -61,9 +65,52 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
                                                scores, boxes, cap_params['im_width'], cap_params['im_height'], frame)
 
             # get boundary box
-            detector_utils.draw_box_on_image(cap_params['num_hands_detect'], cap_params["score_thresh"],
+            centre = detector_utils.draw_box_on_image(cap_params['num_hands_detect'], cap_params["score_thresh"],
                                              scores, boxes, cap_params['im_width'], cap_params['im_height'], frame)
 
+            
+            if is_centres_filled:
+                detection_centres = detection_centres[1:10]
+                detection_centres.append(centre)
+            else:
+                detection_centres.append(centre)
+            index += 1
+            if (index == 10):
+                index = 0
+                is_centres_filled = True
+            
+            centres = detection_centres.copy()
+            centres = [v for v in centres if v]
+            direction = ""
+            if detected:
+                detection_centres = []
+                is_centres_filled = False
+                index = 0
+                detected = False
+                
+            if len(centres) > 3 and is_centres_filled:
+                #centres_asc = centres.copy().sort()
+                #centres_dsc = centres.copy().sort(reverse=True)
+
+                #print(centres)
+
+                if centres[-1] - centres[0] > 100:
+                    direction = "Right"
+                    keyboard.press_and_release('left')
+                    detected = True
+                    print(direction)
+                elif centres[0] - centres[-1] > 100:
+                    direction = "Left"
+                    keyboard.press_and_release('right')
+                    detected = True
+                    print(direction)
+            
+
+            cv2.putText(frame, direction, (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.65, (77, 255, 9), 1)
+                
+            
+            """
             # classify hand pose
             if res is not None and frame_count == 0:
                 class_res = classifier.classify(model, classification_graph, session, res)
@@ -105,25 +152,25 @@ def worker(input_q, output_q, cap_params, frame_count, poses):
 
                     thickness = int(np.sqrt(frame_end / float(i + 1)) * 2.5)
                     cv2.line(frame, centroid_list[i - 1], centroid_list[i], (0, 0, 255), thickness)
-
+            
                 cv2.putText(frame, direction, (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
                             0.65, (77, 255, 9), 1)
-                cv2.putText(frame, "dx: {}, dy: {}".format(dX, dY),
-                            (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.35, (0, 0, 255), 1)
+                #cv2.putText(frame, "dx: {}, dy: {}".format(dX, dY),
+                #            (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                #            0.35, (0, 0, 255), 1)
                 # if direction == "Left":
                 #     keyboard.press_and_release('left')
                 #     #time.sleep(2)
                 # elif direction == "Right":
                 #     keyboard.press_and_release('right')
                 #     time.sleep(2)
-
-                frame_count += 1
-                if frame_count >= frame_end:
-                    frame_count = 0
-                    #centroid_list.clear()
-                    direction = ""
-                    #flag = 1
+                """
+            frame_count += 1
+            if frame_count >= frame_end:
+                frame_count = 0
+                #centroid_list.clear()
+                direction = ""
+                #flag = 1
 
         output_q.put(frame)
 # else:
@@ -138,7 +185,7 @@ if __name__ == '__main__':
     width = 300
     height = 200
     display = 1
-    num_workers = 4
+    num_workers = 1
     queue_size = 5
 
     input_q = Queue(maxsize=queue_size)
@@ -165,6 +212,7 @@ if __name__ == '__main__':
         if (line != ""):
             print(line)
             poses.append(line)
+
 
     # spin up workers to paralleize detection.
     pool = Pool(num_workers, worker,
